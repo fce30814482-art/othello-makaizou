@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>オセロ（リバーシ）—能力カード版</title>
+  <style>
+    :root{
+      --board:#0e7a2b; --cell:#0e7a2b; --accent:#14b8a6; --text:#0f172a; --muted:#6b7280; --white:#f8fafc; --black:#0b0f19; --shadow:0 6px 24px rgba(0,0,0,.15);
+    }
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans JP,Meiryo,sans-serif;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);color:var(--text);display:grid;place-items:center;padding:24px}
+    .app{width:min(980px,100%)}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap}
+    h1{font-size:clamp(20px,3vw,28px);margin:0}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    button{appearance:none;border:none;cursor:pointer;background:#111827;color:#fff;padding:10px 14px;border-radius:14px;box-shadow:var(--shadow);font-weight:700;letter-spacing:.02em;transition:.15s transform ease,.2s background ease}
+    button:hover{transform:translateY(-1px)}
+    button.secondary{background:#334155}
+    button.ghost{background:#e2e8f0;color:#111827}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    select{border-radius:12px;padding:8px 10px;border:1px solid #cbd5e1;background:#fff;box-shadow:var(--shadow);font-weight:600}
+
+    .board-wrap{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:start}
+    .board{width:min(88vmin,680px);aspect-ratio:1/1;background:var(--board);border-radius:20px;padding:10px;box-shadow:var(--shadow);position:relative}
+    .grid{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);gap:8px;width:100%;height:100%}
+    .cell{position:relative;background:var(--cell);border-radius:10px;box-shadow:inset 0 0 0 2px rgba(0,0,0,.10);display:grid;place-items:center}
+    .cell-btn{position:absolute;inset:0;background:transparent;border:none;cursor:pointer;border-radius:10px}
+    .cell-btn:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+    .disc{width:70%;aspect-ratio:1/1;border-radius:50%;box-shadow:inset 0 6px 12px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25)}
+    .disc.black{background:radial-gradient(circle at 35% 35%,#111 10%,#000 60%,#1f2937 100%)}
+    .disc.white{background:radial-gradient(circle at 35% 35%,#fff 5%,#f3f4f6 55%,#e5e7eb 100%)}
+
+    .hint::after{content:"";width:22%;aspect-ratio:1/1;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.95),rgba(255,255,255,.35));box-shadow:0 0 0 2px rgba(0,0,0,.15) inset,0 0 14px rgba(255,255,255,.65);display:block}
+
+    .panel{display:grid;gap:12px}
+    .card{background:#fff;border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+    .status{display:flex;align-items:center;gap:10px}
+    .badge{display:inline-flex;align-items:center;gap:8px;font-weight:700}
+    .pip{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+    .pip.black{background:var(--black)} .pip.white{background:var(--white)}
+    .score{display:flex;gap:14px;font-variant-numeric:tabular-nums}
+    .msg{color:#334155;min-height:1.3em}
+    .legend{color:var(--muted);font-size:14px}
+    .footer{margin-top:8px;color:#64748b;font-size:12px;text-align:center}
+
+    .energy{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .meter{background:#e2e8f0;border-radius:999px;padding:4px;box-shadow:var(--shadow)}
+    .bar{height:12px;border-radius:999px;background:linear-gradient(90deg,#06b6d4,#22c55e);width:0%;transition:width .25s ease}
+    .bar.black{background:linear-gradient(90deg,#0ea5e9,#22d3ee)}
+    .bar.white{background:linear-gradient(90deg,#84cc16,#22c55e)}
+    .ability-on{box-shadow:0 0 0 3px rgba(20,184,166,.6) inset}
+    .danger{color:#dc2626;font-weight:800}
+    .pass{color:#9333ea;font-weight:700}
+    .winner{color:#16a34a;font-weight:800}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>オセロ（リバーシ）—能力カード版</h1>
+      <div class="controls">
+        <div class="row">
+          <button id="newGame">新しく始める</button>
+          <button id="undo" class="secondary" disabled>一手戻す</button>
+          <button id="toggleHints" class="ghost">ヒント表示：<span id="hintState">ON</span></button>
+        </div>
+        <div class="row" aria-label="対戦設定">
+          <label for="mode">モード</label>
+          <select id="mode">
+            <option value="human">2人対戦</option>
+            <option value="cpu" selected>CPU対戦</option>
+          </select>
+          <label for="yourColor">あなたの色</label>
+          <select id="yourColor">
+            <option value="black" selected>黒（先手）</option>
+            <option value="white">白（後手）</option>
+          </select>
+          <label for="level">強さ</label>
+          <select id="level">
+            <option value="easy">かんたん</option>
+            <option value="normal" selected>ふつう</option>
+            <option value="hard">つよい</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <div class="board-wrap">
+      <div class="board" aria-label="オセロ盤 8x8">
+        <div id="grid" class="grid" role="grid" aria-rowcount="8" aria-colcount="8"></div>
+      </div>
+      <aside class="panel">
+        <div class="card">
+          <div class="status">
+            <span class="badge"><span class="pip black"></span>黒の手番</span>
+            <span id="turn" class="badge"></span>
+          </div>
+          <div class="score" id="score" aria-live="polite"></div>
+          <div class="energy">
+            <div class="meter" title="黒エナジー"><div id="eBlack" class="bar black"></div></div>
+            <div class="meter" title="白エナジー"><div id="eWhite" class="bar white"></div></div>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="abilityRing" class="ghost" title="次の一手で周囲8マス反転（10E）">周囲反転（10E）</button>
+            <button id="abilityLine" class="ghost" title="次の一手で縦/横制圧（20E）">縦/横（20E）</button>
+          </div>
+          <div class="msg" id="message" aria-live="polite"></div>
+          <div class="legend">
+            エナジー：相手石を1枚ひっくり返すごとに+1（最大20）。<br/>
+            能力は<strong>石を置く前</strong>に選択し、置いた位置を基準に発動します。<br/>
+            *本バージョンは「強化石」ルールなしです。
+          </div>
+        </div>
+        <div class="footer">© あなたの作品。自由に改造OK！</div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+  // ====== ゲーム基盤 ======
+  const SIZE=8, EMPTY=0, BLACK=1, WHITE=-1;
+  const DIRS=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+  const state={
+    board:createInitialBoard(), player:BLACK, history:[], showHints:true, gameOver:false,
+    cpu:{enabled:true,color:WHITE,level:'normal',delayMs:450,thinking:false},
+    energy:{[BLACK]:0,[WHITE]:0},
+    pendingAbility:null // 'ring' | 'line' | null
+  };
+
+  // DOM
+  const gridEl=document.getElementById('grid');
+  const scoreEl=document.getElementById('score');
+  const turnEl=document.getElementById('turn');
+  const msgEl=document.getElementById('message');
+  const undoBtn=document.getElementById('undo');
+  const newBtn=document.getElementById('newGame');
+  const toggleHintsBtn=document.getElementById('toggleHints');
+  const hintStateEl=document.getElementById('hintState');
+  const modeSel=document.getElementById('mode');
+  const yourColorSel=document.getElementById('yourColor');
+  const levelSel=document.getElementById('level');
+  const eBlack=document.getElementById('eBlack');
+  const eWhite=document.getElementById('eWhite');
+  const abilityRingBtn=document.getElementById('abilityRing');
+  const abilityLineBtn=document.getElementById('abilityLine');
+
+  function createInitialBoard(){
+    const b=Array.from({length:SIZE},()=>Array(SIZE).fill(EMPTY));
+    const m=SIZE/2; b[m-1][m-1]=WHITE; b[m][m]=WHITE; b[m-1][m]=BLACK; b[m][m-1]=BLACK; return b;
+  }
+  const cloneBoard=b=>b.map(r=>r.slice());
+  const inside=(r,c)=>r>=0&&r<SIZE&&c>=0&&c<SIZE;
+
+  function flipsIfMove(b,r,c,player){
+    if(!inside(r,c)||b[r][c]!==EMPTY) return [];
+    const opp=-player, flips=[];
+    for(const [dr,dc] of DIRS){
+      let i=r+dr,j=c+dc; const line=[];
+      while(inside(i,j)&&b[i][j]===opp){ line.push([i,j]); i+=dr; j+=dc; }
+      if(inside(i,j)&&b[i][j]===player&&line.length) flips.push(...line);
+    }
+    return flips;
+  }
+
+  function validMoves(b,player){
+    const ms=[]; for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){const f=flipsIfMove(b,r,c,player); if(f.length) ms.push({r,c,flips:f});} return ms;
+  }
+  function place(b,r,c,player,flips){ b[r][c]=player; for(const [i,j] of flips) b[i][j]=player; return b; }
+  function count(b){ let black=0,white=0,empty=0; for(const row of b) for(const v of row){ if(v===BLACK)black++; else if(v===WHITE)white++; else empty++; } return {black,white,empty}; }
+
+  // ====== 能力（強化石なし） ======
+  function energyGain(p,n){ state.energy[p]=Math.min(20,state.energy[p]+n); }
+  function abilityRing(centerR,centerC,player){
+    if(state.energy[player]<10) return false; let gained=0;
+    for(const [dr,dc] of DIRS){ const i=centerR+dr,j=centerC+dc; if(!inside(i,j)) continue; const v=state.board[i][j]; if(v!==EMPTY && v!==player){ state.board[i][j]=player; gained++; } }
+    energyGain(player,gained); state.energy[player]-=10; return true;
+  }
+  function abilityLine(centerR,centerC,player,orientation){
+    if(state.energy[player]<20) return false; let gained=0;
+    if(orientation==='row'){
+      for(let j=0;j<SIZE;j++){ const v=state.board[centerR][j]; if(v!==player){ if(v!==EMPTY) gained++; state.board[centerR][j]=player; }}
+    }else{
+      for(let i=0;i<SIZE;i++){ const v=state.board[i][centerC]; if(v!==player){ if(v!==EMPTY) gained++; state.board[i][centerC]=player; }}
+    }
+    energyGain(player,gained); state.energy[player]-=20; return true;
+  }
+
+  // 能力予約（置く前に選ぶ）
+  abilityRingBtn.addEventListener('click',()=>{
+    if(state.cpu.enabled && state.player===state.cpu.color) return; // CPU手番は不可
+    if(state.energy[state.player]<10){ flashMsg('エナジー不足（10必要）','danger'); return; }
+    state.pendingAbility = state.pendingAbility==='ring' ? null : 'ring';
+    abilityRingBtn.classList.toggle('ability-on', state.pendingAbility==='ring');
+    abilityLineBtn.classList.remove('ability-on');
+    flashMsg(state.pendingAbility==='ring'?'周囲反転を予約：置くマスを選んでください':'予約解除');
+  });
+  abilityLineBtn.addEventListener('click',()=>{
+    if(state.cpu.enabled && state.player===state.cpu.color) return;
+    if(state.energy[state.player]<20){ flashMsg('エナジー不足（20必要）','danger'); return; }
+    state.pendingAbility = state.pendingAbility==='line' ? null : 'line';
+    abilityLineBtn.classList.toggle('ability-on', state.pendingAbility==='line');
+    abilityRingBtn.classList.remove('ability-on');
+    flashMsg(state.pendingAbility==='line'?'縦/横制圧を予約：置くマスを選んでください':'予約解除');
+  });
+
+  // ====== 描画 ======
+  function render(){
+    gridEl.innerHTML='';
+    const moves=validMoves(state.board,state.player); const hintSet=new Set(moves.map(m=>m.r+","+m.c));
+    for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+      const cell=document.createElement('div'); cell.className='cell'; cell.setAttribute('role','gridcell');
+      const v=state.board[r][c];
+      if(v!==EMPTY){ const d=document.createElement('div'); d.className='disc '+(v===BLACK?'black':'white'); cell.appendChild(d); }
+      else if(state.showHints && hintSet.has(r+","+c)){ const h=document.createElement('div'); h.className='hint'; cell.appendChild(h); }
+      const btn=document.createElement('button'); btn.className='cell-btn'; btn.ariaLabel=`マス ${r+1}-${c+1}`;
+      btn.disabled = state.cpu.enabled && state.player===state.cpu.color;
+      btn.addEventListener('click',()=>onCell(r,c));
+      cell.appendChild(btn); gridEl.appendChild(cell);
+    }
+    const {black,white,empty}=count(state.board);
+    scoreEl.textContent=`● 黒 ${black}　○ 白 ${white}　空き ${empty}`;
+    turnEl.innerHTML = state.player===BLACK ? '<span class="pip black"></span><span>黒</span>' : '<span class="pip white"></span><span>白</span>';
+    hintStateEl.textContent=state.showHints?'ON':'OFF';
+    undoBtn.disabled=state.history.length===0;
+    eBlack.style.width=(state.energy[BLACK]/20*100)+'%';
+    eWhite.style.width=(state.energy[WHITE]/20*100)+'%';
+  }
+
+  // ====== 手の処理 ======
+  function onCell(r,c){
+    if(state.gameOver) return;
+    if(state.cpu.enabled && state.player===state.cpu.color){ flashMsg('CPUの手番です','danger'); return; }
+    const moves=validMoves(state.board,state.player); const mv=moves.find(m=>m.r===r&&m.c===c);
+    if(!mv){ flashMsg('その場所には置けません','danger'); return; }
+
+    // 履歴保存
+    state.history.push({board:cloneBoard(state.board), player:state.player, energy:{...state.energy}, pending:state.pendingAbility});
+
+    // 通常の反転 + エナジー加算
+    place(state.board,r,c,state.player,mv.flips); energyGain(state.player,mv.flips.length);
+
+    // 予約した能力を適用（置いた石基準）
+    if(state.pendingAbility==='ring') abilityRing(r,c,state.player);
+    else if(state.pendingAbility==='line'){
+      // より多く奪える向きを自動選択（行/列）
+      let rowGain=0,colGain=0; for(let j=0;j<SIZE;j++){const v=state.board[r][j]; if(v!==EMPTY&&v!==state.player) rowGain++;}
+      for(let i=0;i<SIZE;i++){const v=state.board[i][c]; if(v!==EMPTY&&v!==state.player) colGain++;}
+      abilityLine(r,c,state.player, rowGain>=colGain?'row':'col');
+    }
+    state.pendingAbility=null; abilityRingBtn.classList.remove('ability-on'); abilityLineBtn.classList.remove('ability-on');
+
+    // 手番交代
+    state.player=-state.player;
+    proceedTurn();
+    render();
+    maybeThink();
+  }
+
+  function proceedTurn(){
+    const cur=validMoves(state.board,state.player);
+    if(cur.length>0){ msgEl.textContent=''; return; }
+    const other=validMoves(state.board,-state.player);
+    if(other.length>0){ flashMsg((state.player===BLACK?'黒':'白')+'は打てないためパス','pass'); state.player=-state.player; return; }
+    // 終局
+    state.gameOver=true; const {black,white}=count(state.board);
+    if(black>white) flashMsg(`ゲーム終了：黒 ${black} - 白 ${white}。黒の勝ち！`,'winner');
+    else if(white>black) flashMsg(`ゲーム終了：黒 ${black} - 白 ${white}。白の勝ち！`,'winner');
+    else flashMsg(`ゲーム終了：${black} 対 ${white} の引き分け。`,'winner');
+  }
+
+  function flashMsg(t,cls=''){ msgEl.textContent=t; msgEl.className='msg '+cls; }
+
+  // ====== CPU ======
+  function maybeThink(){
+    if(state.gameOver||!state.cpu.enabled||state.player!==state.cpu.color) return;
+    const moves=validMoves(state.board,state.player);
+    if(moves.length===0){ state.player=-state.player; proceedTurn(); render(); setTimeout(maybeThink,state.cpu.delayMs); return; }
+    state.cpu.thinking=true; flashMsg('CPUが考えています…');
+    setTimeout(()=>{
+      const choice=pickMove(state.board,state.player,state.cpu.level);
+      const mv=validMoves(state.board,state.player).find(m=>m.r===choice.r && m.c===choice.c); if(!mv){state.cpu.thinking=false;return}
+      // 履歴
+      state.history.push({board:cloneBoard(state.board), player:state.player, energy:{...state.energy}, pending:null});
+      // 能力（事前予約ルールに合わせて、十分なエナジーがあれば低確率で使用）
+      const useLine = state.energy[state.player]>=20 && Math.random()<0.35;
+      const useRing = !useLine && state.energy[state.player]>=10 && Math.random()<0.5;
+      place(state.board,choice.r,choice.c,state.player,mv.flips); energyGain(state.player,mv.flips.length);
+      if(useLine){
+        let rowGain=0,colGain=0; for(let j=0;j<SIZE;j++){const v=state.board[choice.r][j]; if(v!==EMPTY&&v!==state.player) rowGain++;}
+        for(let i=0;i<SIZE;i++){const v=state.board[i][choice.c]; if(v!==EMPTY&&v!==state.player) colGain++;}
+        abilityLine(choice.r,choice.c,state.player,rowGain>=colGain?'row':'col');
+      } else if(useRing){ abilityRing(choice.r,choice.c,state.player); }
+      state.player=-state.player;
+      proceedTurn();
+      render();
+      state.cpu.thinking=false;
+      if(!state.gameOver) setTimeout(maybeThink,state.cpu.delayMs);
+    }, state.cpu.delayMs);
+  }
+
+  function pickMove(board,player,level){
+    const moves=validMoves(board,player); if(level==='easy') return moves[Math.floor(Math.random()*moves.length)];
+    if(level==='normal'){
+      let best=moves[0],score=-1e9; for(const m of moves){ const s=m.flips.length+positionalBonus(m.r,m.c); if(s>score){score=s;best=m;} } return best;
+    }
+    // hard: 1手先評価 + 角優先
+    let best=moves[0],bestScore=-1e9;
+    for(const m of moves){ const next=cloneBoard(board); place(next,m.r,m.c,player,m.flips); const opp=validMoves(next,-player).length; let s=m.flips.length+positionalBonus(m.r,m.c)*3-opp*2; if(isCorner(m.r,m.c)) s+=100; if(s>bestScore){bestScore=s;best=m;} }
+    return best;
+  }
+  const isCorner=(r,c)=>(r===0||r===SIZE-1)&&(c===0||c===SIZE-1);
+  function positionalBonus(r,c){ const corner=isCorner(r,c); if(corner) return 30; const edge=(r===0||r===SIZE-1||c===0||c===SIZE-1); const x=(r===1&&c===1)||(r===1&&c===SIZE-2)||(r===SIZE-2&&c===1)||(r===SIZE-2&&c===SIZE-2); if(x) return -8; return edge?5:0; }
+
+  // ====== UI & 初期化 ======
+  newBtn.addEventListener('click',()=>{
+    const youBlack=yourColorSel.value==='black';
+    state.board=createInitialBoard(); state.player=BLACK; state.history=[]; state.gameOver=false; state.pendingAbility=null;
+    state.cpu.enabled=modeSel.value==='cpu'; state.cpu.color=youBlack?WHITE:BLACK; state.cpu.level=levelSel.value;
+    state.energy[BLACK]=0; state.energy[WHITE]=0;
+    flashMsg('新しい対局を開始しました'); render(); maybeThink();
+  });
+  undoBtn.addEventListener('click',()=>{
+    if(state.history.length===0) return; const last=state.history.pop(); state.board=cloneBoard(last.board); state.player=last.player; state.energy={...last.energy}; state.pendingAbility=last.pending||null; flashMsg('一手戻しました'); render();
+  });
+  toggleHintsBtn.addEventListener('click',()=>{ state.showHints=!state.showHints; hintStateEl.textContent=state.showHints?'ON':'OFF'; render(); });
+  modeSel.addEventListener('change',()=>{ const cpu=modeSel.value==='cpu'; yourColorSel.disabled=!cpu; levelSel.disabled=!cpu; });
+  yourColorSel.disabled = modeSel.value!=='cpu'; levelSel.disabled = modeSel.value!=='cpu';
+
+  render(); maybeThink();
+  </script>
+</body>
+</html>
